@@ -85,13 +85,15 @@ DEFAULT_TIR_IMG = os.path.join(_ROOT, "assets/input/tir")  # 与 json 内 "TIR-B
 
 
 class TopPClient(OpenAICompatibleClient):
-    """OpenRouter / 阿里百炼(DashScope) 通用对接：加 top_p / seed + 思维链回传 + 流式聚合。
+    """OpenRouter / 阿里百炼(DashScope) / 自建 vLLM 通用对接：加 top_p / seed + 思维链回传 + 流式聚合。
 
     平台差异(按 base_url 自动适配)：
     - OpenRouter：思维链在 message.reasoning，用 include_reasoning=True 触发；非流式即可。
-    - 百炼 DashScope：思维链在 message.reasoning_content；**thinking 模型多强制 stream=True**，
-      故 dashscope+thinking 自动走流式，并用 stream_options.include_usage 拿 token 账。
-    - Qwen3-VL-Thinking 推荐 temp=0.6 / top_p=0.95(避免贪心打转)；seed 可复现。
+    - 百炼 DashScope：思维链在 message.reasoning_content；thinking 模型多强制 stream=True，故自动走流式。
+    - 自建 vLLM(`--reasoning-parser deepseek_r1`)：思维链同样在 message.reasoning_content（非流式响应里也有，
+      usage 也照常返回），默认非流式即可，需要时 --stream 显式开。tool_calls：若 vLLM 未带
+      `--enable-auto-tool-choice --tool-call-parser hermes`，模型会把调用当文本吐 → 已由 _recover_text_tool_call 兜底。
+    - 流式时用 stream_options.include_usage 拿 token 账；temp=0.6/top_p=0.95、seed 可复现。
     """
 
     def __init__(self, *args, top_p: float = 0.95, seed: Optional[int] = None,
@@ -101,7 +103,8 @@ class TopPClient(OpenAICompatibleClient):
         self.seed = seed
         self._is_openrouter = "openrouter" in self.base_url
         self._is_dashscope = "dashscope" in self.base_url or "aliyuncs" in self.base_url
-        # stream=None 时自动判定：百炼 thinking 模型强制流式
+        # stream=None 自动判定：仅百炼 thinking 强制流式；vLLM/自建默认非流式(也完整支持，
+        # reasoning_content 与 usage 在非流式响应里都有)，需要时用 --stream 显式开。
         self.stream = stream if stream is not None else (self._is_dashscope and "thinking" in self.model.lower())
 
     def _payload(self, messages, tools) -> Dict[str, Any]:
@@ -393,6 +396,9 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--timeout", type=float, default=600.0, help="单次请求超时秒(自建 vLLM 长推理给大点)")
+    ap.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None,
+                    help="显式开/关流式(默认 auto：百炼 thinking 流式、vLLM 非流式更好算账)")
     ap.add_argument("--tir-json", default=os.environ.get("TIR_JSON", DEFAULT_TIR_JSON))
     ap.add_argument("--tir-img", default=os.environ.get("TIR_IMAGE_FOLDER", DEFAULT_TIR_IMG))
     # 百炼 qwen3-vl-8b-thinking 实际计价(CNY/token)：输入(思考) ¥0.5/M、输出(思考) ¥5/M
@@ -412,7 +418,7 @@ def main():
 
     client = TopPClient(base_url=base, api_key=key, model=model,
                         temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_tokens,
-                        seed=args.seed)
+                        seed=args.seed, timeout=args.timeout, stream=args.stream)
     prices = Prices(in_miss=args.in_price, in_hit=args.in_price, out=args.out_price)
     registry = ToolRegistry(); registry.register(CodeInterpreterTool())
     verifier = LenientTIRVerifier()

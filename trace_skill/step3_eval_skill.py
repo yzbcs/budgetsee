@@ -167,6 +167,9 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--timeout", type=float, default=600.0, help="单次请求超时秒(自建 vLLM 长推理给大点)")
+    ap.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None,
+                    help="显式开/关流式(默认 auto)")
     ap.add_argument("--tir-json", default=os.environ.get("TIR_JSON", step1.DEFAULT_TIR_JSON))
     ap.add_argument("--tir-img", default=os.environ.get("TIR_IMAGE_FOLDER", step1.DEFAULT_TIR_IMG))
     ap.add_argument("--in-price", type=float, default=0.5e-6, help="CNY/token 输入(百炼思考 ¥0.5/M)")
@@ -187,7 +190,8 @@ def main():
 
     client = step1.TopPClient(base_url=base, api_key=key, model=model,
                               temperature=args.temperature, top_p=args.top_p,
-                              max_tokens=args.max_tokens, seed=args.seed)
+                              max_tokens=args.max_tokens, seed=args.seed,
+                              timeout=args.timeout, stream=args.stream)
     prices = Prices(in_miss=args.in_price, in_hit=args.in_price, out=args.out_price)
     registry = ToolRegistry(); registry.register(CodeInterpreterTool())
     verifier = LenientTIRVerifier()
