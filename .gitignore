@@ -1,0 +1,25 @@
+# secrets — 绝不提交 API key
+**/.env
+
+# 数据集（1.7GB，从 HuggingFace 下载，见 download_tir.py / README）
+assets/input/tir/
+
+# 实验产物与日志
+trace_skill/assets/output/
+trace_skill/assets/log/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# 操作系统 / 编辑器 / 本地工具
+.DS_Store
+.claude/
+tmp/
+assets/input/
+
+# AI 助手内部指令（不公开）
+CLAUDE.md
+AGENTS.md
